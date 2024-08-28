@@ -22,8 +22,8 @@ export class SendService {
     const ckbRpcUrl = configService.get<string>("send.ckb_rpc_url");
 
     this.client = configService.get<boolean>("is_mainnet")
-      ? new ccc.ClientPublicMainnet(ckbRpcUrl)
-      : new ccc.ClientPublicTestnet(ckbRpcUrl);
+      ? new ccc.ClientPublicMainnet({ url: ckbRpcUrl })
+      : new ccc.ClientPublicTestnet({ url: ckbRpcUrl });
 
     autoRun(this.logger, sendInterval, () => this.checkTxs());
   }

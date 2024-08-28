@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@ckb-ccc/core':
-        specifier: ^0.0.13-alpha.3
-        version: 0.0.13-alpha.3(typescript@5.5.4)
+        specifier: ^0.0.13-alpha.4
+        version: 0.0.13-alpha.4(typescript@5.5.4)
       '@nestjs/common':
         specifier: ^10.0.0
         version: 10.4.1(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.2)(rxjs@7.8.1)
@@ -323,8 +323,8 @@ packages:
   '@bcoe/v8-coverage@0.2.3':
     resolution: {integrity: sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==}
 
-  '@ckb-ccc/core@0.0.13-alpha.3':
-    resolution: {integrity: sha512-j7IyVvyMYc9OrCY8U3lA06rTA3bnJyR1UHwmW4h8NRPYau/7CnoRvCBglWN3OC9FOnNYZcmp1NLKsJD2yNl44w==}
+  '@ckb-ccc/core@0.0.13-alpha.4':
+    resolution: {integrity: sha512-FlvkSVxmdWtBsqxG/Bx8StjpbZw2o0R7PYT03rncAtoXQWcgbWBqYurOSqGXiLlpnjnd0jVkWo5cUyYIVAnp8Q==}
 
   '@colors/colors@1.5.0':
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
@@ -1929,6 +1929,11 @@ packages:
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
 
+  isomorphic-ws@5.0.0:
+    resolution: {integrity: sha512-muId7Zzn9ywDsyXgTIafTry2sV3nySZeUDe6YedVd1Hvuuep5AsIlqK+XefWpYTyJG5e503F2xIuT2lcU6rCSw==}
+    peerDependencies:
+      ws: '*'
+
   istanbul-lib-coverage@3.2.2:
     resolution: {integrity: sha512-O8dpsF+r0WV/8MNRKfnmrtCWhuKjxrq2w+jpzBL5UZKTi2LeVWnWOmWRxFlesJONmc+wLAGvKQZEOanko0LFTg==}
     engines: {node: '>=8'}
@@ -3211,6 +3216,18 @@ packages:
       utf-8-validate:
         optional: true
 
+  ws@8.18.0:
+    resolution: {integrity: sha512-8VbfWfHLbbwu3+N6OKsOMpBdT4kXPDDB9cJk2bJ6mh9ucxdlnNvH1e+roYkKmN9Nxw2yjz7VzeO9oOz2zJ04Pw==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   xtend@4.0.2:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
     engines: {node: '>=0.4'}
@@ -3488,7 +3505,7 @@ snapshots:
 
   '@bcoe/v8-coverage@0.2.3': {}
 
-  '@ckb-ccc/core@0.0.13-alpha.3(typescript@5.5.4)':
+  '@ckb-ccc/core@0.0.13-alpha.4(typescript@5.5.4)':
     dependencies:
       '@joyid/ckb': 1.0.1(typescript@5.5.4)
       '@noble/ciphers': 0.5.3
@@ -3500,6 +3517,8 @@ snapshots:
       buffer: 6.0.3
       cross-fetch: 4.0.0
       ethers: 6.13.2
+      isomorphic-ws: 5.0.0(ws@8.18.0)
+      ws: 8.18.0
     transitivePeerDependencies:
       - bufferutil
       - encoding
@@ -5454,6 +5473,10 @@ snapshots:
 
   isexe@2.0.0: {}
 
+  isomorphic-ws@5.0.0(ws@8.18.0):
+    dependencies:
+      ws: 8.18.0
+
   istanbul-lib-coverage@3.2.2: {}
 
   istanbul-lib-instrument@5.2.1:
@@ -6816,6 +6839,8 @@ snapshots:
       signal-exit: 3.0.7
 
   ws@8.17.1: {}
+
+  ws@8.18.0: {}
 
   xtend@4.0.2: {}
 

@@ -42,8 +42,8 @@ export class CheckService {
     this.pathPrefix = configService.get<string>("hd_path_prefix") ?? "";
     this.feeRate = feeRate;
     this.client = configService.get<boolean>("is_mainnet")
-      ? new ccc.ClientPublicMainnet(ckbRpcUrl)
-      : new ccc.ClientPublicTestnet(ckbRpcUrl);
+      ? new ccc.ClientPublicMainnet({ url: ckbRpcUrl })
+      : new ccc.ClientPublicTestnet({ url: ckbRpcUrl });
 
     this.requester = axios.create({
       baseURL: configService.get<string>("check.mempool_rpc_url"),
