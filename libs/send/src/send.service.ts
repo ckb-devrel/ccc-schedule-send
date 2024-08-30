@@ -3,7 +3,6 @@ import { CkbTxStatus } from "@app/schemas";
 import { ccc } from "@ckb-ccc/core";
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Equal, Or } from "typeorm";
 import { CkbTxRepo } from "./repos";
 
 @Injectable()
@@ -26,65 +25,89 @@ export class SendService {
       : new ccc.ClientPublicTestnet({ url: ckbRpcUrl });
 
     autoRun(this.logger, sendInterval, () => this.checkTxs());
+    autoRun(this.logger, sendInterval, () => this.checkSent());
   }
 
   async checkTxs() {
     await foreachInRepo({
       repo: this.ckbTxRepo,
       criteria: {
-        status: Or(Equal(CkbTxStatus.Prepared), Equal(CkbTxStatus.Sent)),
+        status: CkbTxStatus.Prepared,
+      },
+      order: {
+        createdAt: "asc",
+      },
+      isSerial: true,
+      handler: async (ckbTx) => {
+        const res = await this.client.getTransaction(ckbTx.txHash);
+        if (!res || res.status === "sent") {
+          const tx = ccc.Transaction.from(JSON.parse(ckbTx.rawTx));
+          try {
+            await this.client.sendTransaction(tx, "passthrough");
+          } catch (e) {
+            if (Date.now() - ckbTx.updatedAt.getTime() >= 60000) {
+              this.logger.error(
+                `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed.`,
+              );
+              await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Failed);
+            }
+            throw e;
+          }
+        }
+        await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Sent);
+        this.logger.log(
+          `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} has been sent`,
+        );
+      },
+    });
+  }
+
+  async checkSent() {
+    const tip = await this.client.getTip();
+    await foreachInRepo({
+      repo: this.ckbTxRepo,
+      criteria: {
+        status: CkbTxStatus.Sent,
       },
       order: {
         updatedAt: "asc",
       },
-      isSerial: true,
       handler: async (ckbTx) => {
-        switch (ckbTx.status) {
-          case CkbTxStatus.Prepared: {
-            const tx = ccc.Transaction.from(JSON.parse(ckbTx.rawTx));
-            await this.client.sendTransaction(tx, "passthrough");
-            await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Sent);
-            this.logger.log(
-              `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} has been sent`,
+        const res = await this.client.getTransaction(ckbTx.txHash);
+        if (!res || res.status === "sent") {
+          if (Date.now() - ckbTx.updatedAt.getTime() >= 120000) {
+            this.logger.error(
+              `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} rearranged.`,
             );
-            break;
+            await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Prepared);
           }
-          case CkbTxStatus.Sent: {
-            const res = await this.client.getTransaction(ckbTx.txHash);
-            if (!res || res.blockNumber === undefined) {
-              return;
-            }
-
-            if (res.status === "rejected") {
-              await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Failed);
-              this.logger.error(
-                `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed ${res.reason}.`,
-              );
-              return;
-            }
-
-            if (res.status !== "committed") {
-              return;
-            }
-
-            const tip = await this.client.getTip();
-            if (tip - res.blockNumber < 24) {
-              return;
-            }
-
-            await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Confirmed);
-
-            this.logger.log(
-              `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} confirmed`,
-            );
-            break;
-          }
-          default: {
-            throw new Error(
-              `Unknown CKB TX ${ckbTx.id} status ${ckbTx.status}`,
-            );
-          }
+          return;
         }
+
+        if (res.status === "rejected") {
+          await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Failed);
+          this.logger.error(
+            `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed ${res.reason}.`,
+          );
+          return;
+        }
+
+        if (res.status !== "committed" || res.blockNumber === undefined) {
+          if (Date.now() - ckbTx.updatedAt.getTime() >= 600000) {
+            this.logger.error(
+              `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} rearranged.`,
+            );
+            await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Prepared);
+          }
+          return;
+        }
+        if (tip - res.blockNumber < 24) {
+          return;
+        }
+
+        await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Confirmed);
+
+        this.logger.log(`CKB TX ${ckbTx.id} hash ${ckbTx.txHash} confirmed`);
       },
     });
   }

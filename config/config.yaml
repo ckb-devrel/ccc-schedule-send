@@ -17,7 +17,6 @@ check:
   interval: 1000
   # ckb_rpc_url: wss://testnet.ckb.dev/ws
   mempool_rpc_url: https://mempool.space/api/
-  send_interval: 1000
 
 send:
   interval: 1000
