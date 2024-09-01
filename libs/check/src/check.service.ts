@@ -101,6 +101,7 @@ export class CheckService {
 
     if (tx.status === CkbTxStatus.Failed) {
       await this.planRepo.updateStatus(plan, PlanStatus.Saved);
+      await this.client.cache.clear();
       return true;
     } else if (tx.status === CkbTxStatus.Sent) {
       await this.planRepo.updateStatus(plan, PlanStatus.Finished);

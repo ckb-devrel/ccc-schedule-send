@@ -18,4 +18,8 @@ export class CkbTxRepo extends Repository<CkbTx> {
     }
     ckbTx.status = status;
   }
+
+  findTxByHash(txHash: string): Promise<CkbTx | null> {
+    return this.findOneBy({ txHash });
+  }
 }

@@ -45,12 +45,41 @@ export class SendService {
           try {
             await this.client.sendTransaction(tx, "passthrough");
           } catch (e) {
-            if (Date.now() - ckbTx.updatedAt.getTime() >= 60000) {
+            if (e instanceof ccc.ErrorClientVerification) {
               this.logger.error(
-                `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed.`,
+                `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed to pass verification.`,
               );
               await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Failed);
+              return;
             }
+
+            if (e instanceof ccc.ErrorClientResolveUnknown) {
+              const previousTx = await this.ckbTxRepo.findTxByHash(
+                e.outPoint.txHash,
+              );
+              const isDead = await (async () => {
+                try {
+                  return (
+                    (await this.client.getCell(e.outPoint)) &&
+                    !(await this.client.getCellLive(e.outPoint, false))
+                  );
+                } catch (err) {
+                  return false;
+                }
+              })();
+              if (previousTx?.status === CkbTxStatus.Sent && !isDead) {
+                this.logger.log(
+                  `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} is waiting for ${previousTx.id} hash ${previousTx.txHash}.`,
+                );
+              } else {
+                this.logger.error(
+                  `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed by using unknown out point.`,
+                );
+                await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Failed);
+              }
+              return;
+            }
+
             throw e;
           }
         }
