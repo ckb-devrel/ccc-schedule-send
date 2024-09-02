@@ -16,6 +16,8 @@ services:
       MYSQL_DATABASE: appdb
       MYSQL_USER: appdb
       MYSQL_PASSWORD: appdb
+    command:
+      - '--skip-log-bin'
     volumes:
       - ./mysql:/var/lib/mysql
     restart: always

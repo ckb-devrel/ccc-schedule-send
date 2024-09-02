@@ -20,4 +20,5 @@ check:
 
 send:
   interval: 1000
+  max_pending_txs: 250
   # ckb_rpc_url: wss://testnet.ckb.dev/ws

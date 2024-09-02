@@ -26,7 +26,7 @@ export class Plan {
   @Column({ type: "varchar" })
   amount: string;
 
-  @Column({ type: "varchar" })
+  @Column({ type: "integer" })
   blockNumber: number;
 
   @Column({ type: "varchar", nullable: true })

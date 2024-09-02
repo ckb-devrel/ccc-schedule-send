@@ -1,6 +1,7 @@
 import {
   EntityManager,
   FindOptionsOrder,
+  FindOptionsSelect,
   FindOptionsWhere,
   MoreThan,
   Repository,
@@ -13,6 +14,7 @@ export async function foreachInRepo<T>({
   order,
   isSerial,
   chunkSize,
+  select,
 }: {
   repo: Repository<T & { id: number }>;
   handler: (entity: T) => Promise<unknown>;
@@ -20,6 +22,7 @@ export async function foreachInRepo<T>({
   order?: FindOptionsOrder<T & { id: number }>;
   isSerial?: boolean;
   chunkSize?: number;
+  select?: FindOptionsSelect<T & { id: number }>;
 }) {
   let lastId: number | null = null;
 
@@ -30,6 +33,7 @@ export async function foreachInRepo<T>({
         : criteria,
       order,
       take: chunkSize ?? 100,
+      select,
     });
     if (entities.length === 0) {
       break;

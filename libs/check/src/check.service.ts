@@ -100,10 +100,12 @@ export class CheckService {
     }
 
     if (tx.status === CkbTxStatus.Failed) {
+      this.logger.error(`Plan ${plan.id} failed.`);
       await this.planRepo.updateStatus(plan, PlanStatus.Saved);
       await this.client.cache.clear();
       return true;
-    } else if (tx.status === CkbTxStatus.Sent) {
+    } else if (tx.status === CkbTxStatus.Confirmed) {
+      this.logger.log(`Plan ${plan.id} finished.`);
       await this.planRepo.updateStatus(plan, PlanStatus.Finished);
       return false;
     } else {

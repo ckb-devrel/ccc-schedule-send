@@ -9,6 +9,7 @@ import { CkbTxRepo } from "./repos";
 export class SendService {
   private readonly logger = new Logger(SendService.name);
   private readonly client: ccc.Client = new ccc.ClientPublicTestnet();
+  private readonly maxPendingTxs: number;
 
   constructor(
     configService: ConfigService,
@@ -18,14 +19,20 @@ export class SendService {
     if (sendInterval === undefined) {
       throw Error("Empty check interval");
     }
+    const maxPendingTxs = configService.get<number>("send.max_pending_txs");
+    if (maxPendingTxs === undefined) {
+      throw Error("Empty max pending txs");
+    }
     const ckbRpcUrl = configService.get<string>("send.ckb_rpc_url");
 
     this.client = configService.get<boolean>("is_mainnet")
       ? new ccc.ClientPublicMainnet({ url: ckbRpcUrl })
       : new ccc.ClientPublicTestnet({ url: ckbRpcUrl });
+    this.maxPendingTxs = maxPendingTxs;
 
     autoRun(this.logger, sendInterval, () => this.checkTxs());
     autoRun(this.logger, sendInterval, () => this.checkSent());
+    autoRun(this.logger, sendInterval, () => this.checkCommitted());
   }
 
   async checkTxs() {
@@ -39,15 +46,26 @@ export class SendService {
       },
       isSerial: true,
       handler: async (ckbTx) => {
+        if (
+          (await this.ckbTxRepo.countBy({ status: CkbTxStatus.Sent })) >
+          this.maxPendingTxs
+        ) {
+          throw new Error("Too many transactions");
+        }
+
         const res = await this.client.getTransaction(ckbTx.txHash);
         if (!res || res.status === "sent") {
           const tx = ccc.Transaction.from(JSON.parse(ckbTx.rawTx));
           try {
             await this.client.sendTransaction(tx, "passthrough");
           } catch (e) {
-            if (e instanceof ccc.ErrorClientVerification) {
+            if (
+              e instanceof ccc.ErrorClientVerification ||
+              e.message.startsWith("PoolRejectedRBF")
+            ) {
               this.logger.error(
                 `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed to pass verification.`,
+                e.message,
               );
               await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Failed);
               return;
@@ -80,7 +98,10 @@ export class SendService {
               return;
             }
 
-            throw e;
+            this.logger.error(
+              `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed to send ${e.message}.`,
+            );
+            return;
           }
         }
         await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Sent);
@@ -92,7 +113,6 @@ export class SendService {
   }
 
   async checkSent() {
-    const tip = await this.client.getTip();
     await foreachInRepo({
       repo: this.ckbTxRepo,
       criteria: {
@@ -101,15 +121,61 @@ export class SendService {
       order: {
         updatedAt: "asc",
       },
+      select: {
+        id: true,
+        txHash: true,
+        updatedAt: true,
+        status: true,
+      },
       handler: async (ckbTx) => {
         const res = await this.client.getTransaction(ckbTx.txHash);
         if (!res || res.status === "sent") {
           if (Date.now() - ckbTx.updatedAt.getTime() >= 120000) {
             this.logger.error(
-              `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} rearranged.`,
+              `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} rearranged by not found.`,
             );
             await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Prepared);
           }
+          return;
+        }
+
+        if (res.blockNumber === undefined) {
+          if (Date.now() - ckbTx.updatedAt.getTime() >= 600000) {
+            this.logger.error(
+              `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} rearranged by not committed`,
+            );
+            await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Prepared);
+          }
+        } else {
+          await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Committed);
+          this.logger.log(`CKB TX ${ckbTx.id} hash ${ckbTx.txHash} committed`);
+        }
+      },
+    });
+  }
+
+  async checkCommitted() {
+    await foreachInRepo({
+      repo: this.ckbTxRepo,
+      criteria: {
+        status: CkbTxStatus.Committed,
+      },
+      order: {
+        updatedAt: "asc",
+      },
+      select: {
+        id: true,
+        txHash: true,
+        updatedAt: true,
+        status: true,
+      },
+      handler: async (ckbTx) => {
+        const res = await this.client.getTransaction(ckbTx.txHash);
+        if (!res || res.blockNumber === undefined) {
+          this.logger.error(
+            `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} rearranged by not found.`,
+          );
+          await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Prepared);
           return;
         }
 
@@ -121,16 +187,8 @@ export class SendService {
           return;
         }
 
-        if (res.status !== "committed" || res.blockNumber === undefined) {
-          if (Date.now() - ckbTx.updatedAt.getTime() >= 600000) {
-            this.logger.error(
-              `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} rearranged.`,
-            );
-            await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Prepared);
-          }
-          return;
-        }
-        if (tip - res.blockNumber < 24) {
+        const tip = await this.client.getTip();
+        if (tip - res.blockNumber < ccc.numFrom(24)) {
           return;
         }
 

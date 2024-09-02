@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
@@ -9,6 +10,7 @@ import {
 export enum CkbTxStatus {
   Prepared = "Prepared",
   Sent = "Sent",
+  Committed = "Committed",
   Failed = "Failed",
   Confirmed = "Confirmed",
 }
@@ -18,10 +20,11 @@ export class CkbTx {
   @PrimaryGeneratedColumn("increment")
   id: number;
 
-  @Column({ type: "text" })
+  @Column({ type: "varchar" })
+  @Index()
   txHash: string;
 
-  @Column({ type: "text" })
+  @Column({ type: "longtext" })
   rawTx: string;
 
   @Column({ type: "varchar" })
