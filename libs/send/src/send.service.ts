@@ -105,10 +105,9 @@ export class SendService {
             if (e instanceof ccc.ErrorClientDuplicatedTransaction) {
               // It has been sent?
             } else {
-              this.logger.error(
+              throw new Error(
                 `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed to send ${e.message}.`,
               );
-              return;
             }
           }
         }
