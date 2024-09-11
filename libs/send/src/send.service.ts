@@ -61,7 +61,7 @@ export class SendService {
           } catch (e) {
             if (
               e instanceof ccc.ErrorClientVerification ||
-              e.message.startsWith("PoolRejectedRBF")
+              e instanceof ccc.ErrorClientRBFRejected
             ) {
               this.logger.error(
                 `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed to pass verification.`,
@@ -85,23 +85,31 @@ export class SendService {
                   return false;
                 }
               })();
-              if (previousTx?.status === CkbTxStatus.Sent && !isDead) {
+              if (
+                previousTx &&
+                previousTx.status !== CkbTxStatus.Failed &&
+                !isDead
+              ) {
                 this.logger.log(
                   `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} is waiting for ${previousTx.id} hash ${previousTx.txHash}.`,
                 );
               } else {
                 this.logger.error(
-                  `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed by using unknown out point.`,
+                  `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed by using unknown out point. ${e.outPoint.txHash}:${e.outPoint.index.toString()}`,
                 );
                 await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Failed);
               }
               return;
             }
 
-            this.logger.error(
-              `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed to send ${e.message}.`,
-            );
-            return;
+            if (e instanceof ccc.ErrorClientDuplicatedTransaction) {
+              // It has been sent?
+            } else {
+              this.logger.error(
+                `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed to send ${e.message}.`,
+              );
+              return;
+            }
           }
         }
         await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Sent);
