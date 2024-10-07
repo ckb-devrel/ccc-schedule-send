@@ -9,6 +9,10 @@ export class CkbTxRepo extends Repository<CkbTx> {
   }
 
   async updateStatus(ckbTx: CkbTx, status: CkbTxStatus) {
+    if (status === ckbTx.status) {
+      return;
+    }
+
     const res = await this.update(
       { id: ckbTx.id, status: ckbTx.status },
       { status },
