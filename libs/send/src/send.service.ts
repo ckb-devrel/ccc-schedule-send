@@ -36,110 +36,122 @@ export class SendService {
   }
 
   async checkTxs() {
-    const sending: Promise<void>[] = [];
+    let sending: Promise<void>[] = [];
+    let sent = await this.ckbTxRepo.countBy({ status: CkbTxStatus.Sent });
 
-    await foreachInRepo({
-      repo: this.ckbTxRepo,
-      criteria: {
-        status: CkbTxStatus.Prepared,
-      },
-      order: {
-        createdAt: "asc",
-      },
-      isSerial: true,
-      handler: async (ckbTx) => {
-        if (
-          (await this.ckbTxRepo.countBy({ status: CkbTxStatus.Sent })) >
-          this.maxPendingTxs
-        ) {
-          throw new Error("Too many transactions");
-        }
+    try {
+      await foreachInRepo({
+        repo: this.ckbTxRepo,
+        criteria: {
+          status: CkbTxStatus.Prepared,
+        },
+        order: {
+          createdAt: "asc",
+        },
+        isSerial: true,
+        handler: async (ckbTx) => {
+          if (sending.length + sent >= this.maxPendingTxs) {
+            const past = sending;
+            sending = [];
+            await Promise.all(past);
+            sent = await this.ckbTxRepo.countBy({ status: CkbTxStatus.Sent });
+            if (sent >= this.maxPendingTxs) {
+              throw new Error("Too many transactions");
+            }
+          }
 
-        const tx = ccc.Transaction.from(JSON.parse(ckbTx.rawTx));
-        sending.push(
-          this.client
-            .sendTransaction(tx, "passthrough")
-            .catch(async (e): Promise<boolean> => {
-              if (
-                e instanceof ccc.ErrorClientVerification ||
-                e instanceof ccc.ErrorClientRBFRejected
-              ) {
-                this.logger.error(
-                  `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed to pass verification.`,
-                  e.message,
-                );
-                await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Failed);
-                return false;
-              }
-
-              if (e instanceof ccc.ErrorClientResolveUnknown) {
-                const previousTx = await this.ckbTxRepo.findTxByHash(
-                  e.outPoint.txHash,
-                );
-                if (!previousTx || previousTx.status === CkbTxStatus.Failed) {
+          const tx = ccc.Transaction.from(JSON.parse(ckbTx.rawTx));
+          sending.push(
+            this.client
+              .sendTransaction(tx, "passthrough")
+              .catch(async (e): Promise<boolean> => {
+                if (
+                  e instanceof ccc.ErrorClientVerification ||
+                  e instanceof ccc.ErrorClientRBFRejected
+                ) {
                   this.logger.error(
-                    `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed by using unknown out point. ${e.outPoint.txHash}:${e.outPoint.index.toString()}`,
+                    `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed to pass verification.`,
+                    e.message,
                   );
                   await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Failed);
                   return false;
                 }
 
-                if (
-                  previousTx.status === CkbTxStatus.Prepared ||
-                  previousTx.status === CkbTxStatus.Sent
-                ) {
-                  this.logger.log(
-                    `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} is waiting for ${previousTx.id} hash ${previousTx.txHash}.`,
+                if (e instanceof ccc.ErrorClientResolveUnknown) {
+                  const previousTx = await this.ckbTxRepo.findTxByHash(
+                    e.outPoint.txHash,
                   );
-                  return false;
-                }
-
-                const isDead = await (async () => {
-                  try {
-                    return (
-                      (await this.client.getCell(e.outPoint)) &&
-                      !(await this.client.getCellLive(e.outPoint, false))
+                  if (!previousTx || previousTx.status === CkbTxStatus.Failed) {
+                    this.logger.error(
+                      `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed by using unknown out point. ${e.outPoint.txHash}:${e.outPoint.index.toString()}`,
                     );
-                  } catch (err) {
+                    await this.ckbTxRepo.updateStatus(
+                      ckbTx,
+                      CkbTxStatus.Failed,
+                    );
                     return false;
                   }
-                })();
-                if (!isDead) {
-                  this.logger.log(
-                    `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} is waiting for ${previousTx.id} hash ${previousTx.txHash}.`,
-                  );
-                } else {
-                  this.logger.error(
-                    `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed by using unknown out point. ${e.outPoint.txHash}:${e.outPoint.index.toString()}`,
-                  );
-                  await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Failed);
+
+                  if (
+                    previousTx.status === CkbTxStatus.Prepared ||
+                    previousTx.status === CkbTxStatus.Sent
+                  ) {
+                    this.logger.log(
+                      `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} is waiting for ${previousTx.id} hash ${previousTx.txHash}.`,
+                    );
+                    return false;
+                  }
+
+                  const isDead = await (async () => {
+                    try {
+                      return (
+                        (await this.client.getCell(e.outPoint)) &&
+                        !(await this.client.getCellLive(e.outPoint, false))
+                      );
+                    } catch (err) {
+                      return false;
+                    }
+                  })();
+                  if (!isDead) {
+                    this.logger.log(
+                      `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} is waiting for ${previousTx.id} hash ${previousTx.txHash}.`,
+                    );
+                  } else {
+                    this.logger.error(
+                      `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed by using unknown out point. ${e.outPoint.txHash}:${e.outPoint.index.toString()}`,
+                    );
+                    await this.ckbTxRepo.updateStatus(
+                      ckbTx,
+                      CkbTxStatus.Failed,
+                    );
+                  }
+                  return false;
                 }
-                return false;
-              }
 
-              if (e instanceof ccc.ErrorClientDuplicatedTransaction) {
-                // It has been sent
-                return true;
-              } else {
-                throw new Error(
-                  `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed to send ${e.message}.`,
+                if (e instanceof ccc.ErrorClientDuplicatedTransaction) {
+                  // It has been sent
+                  return true;
+                } else {
+                  throw new Error(
+                    `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} failed to send ${e.message}.`,
+                  );
+                }
+              })
+              .then(async (res) => {
+                if (!res) {
+                  return;
+                }
+                await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Sent);
+                this.logger.log(
+                  `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} has been sent`,
                 );
-              }
-            })
-            .then(async (res) => {
-              if (!res) {
-                return;
-              }
-              await this.ckbTxRepo.updateStatus(ckbTx, CkbTxStatus.Sent);
-              this.logger.log(
-                `CKB TX ${ckbTx.id} hash ${ckbTx.txHash} has been sent`,
-              );
-            }),
-        );
-      },
-    });
-
-    await Promise.all(sending);
+              }),
+          );
+        },
+      });
+    } finally {
+      await Promise.all(sending);
+    }
   }
 
   async checkSent() {
